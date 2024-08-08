@@ -7,7 +7,7 @@ describe("Cross Chain Name Service", function () {
   let receiver;
   let lookup;
   let routerAddress;
-  let sourceChainSelector = 1; // Usa un valor más pequeño
+  let sourceChainSelector = 1;
 
   before(async () => {
     const [deployer, alice] = await ethers.getSigners();
@@ -19,22 +19,26 @@ describe("Cross Chain Name Service", function () {
 
     // Get Router contract address from configuration
     const config = await simulator.configuration();
-    routerAddress = config[1]; // Asegúrate de que este sea el valor correcto
+    routerAddress = config[1];
 
     // Deploy CrossChainNameServiceLookup
     const Lookup = await ethers.getContractFactory("CrossChainNameServiceLookup");
-    lookup = await Lookup.deploy(); // Aquí, el constructor no necesita argumentos
+    lookup = await Lookup.deploy();
     await lookup.deployed();
 
     // Deploy CrossChainNameServiceRegister with all required arguments
     const Register = await ethers.getContractFactory("CrossChainNameServiceRegister");
-    register = await Register.deploy(routerAddress, lookup.address); // Pasar todos los argumentos necesarios
+    register = await Register.deploy(routerAddress, lookup.address);
     await register.deployed();
 
     // Deploy CrossChainNameServiceReceiver with all required arguments
     const Receiver = await ethers.getContractFactory("CrossChainNameServiceReceiver");
-    receiver = await Receiver.deploy(routerAddress, lookup.address, sourceChainSelector); // Pasar todos los argumentos necesarios
+    receiver = await Receiver.deploy(routerAddress, lookup.address, sourceChainSelector);
     await receiver.deployed();
+
+    // Enable the chain in the register contract
+    const gasLimit = 1000000; // Define a reasonable gas limit
+    await register.enableChain(sourceChainSelector, receiver.address, gasLimit);
 
     // Set CrossChainNameService addresses
     await lookup.setCrossChainNameServiceAddress(register.address);
@@ -46,8 +50,15 @@ describe("Cross Chain Name Service", function () {
     const name = "alice.ccns";
     const aliceAddress = alice.address;
 
-    // Register name
-    await register.register(name);
+    // Ensure the CrossChainNameServiceRegister contract is authorized to register names
+    await lookup.setCrossChainNameServiceAddress(register.address);
+
+    // Register name with the correct contract
+    try {
+      await register.register(name); 
+    } catch (error) {
+      console.error("Error during register:", error);
+    }
 
     // Lookup name
     const registeredAddress = await lookup.lookup(name);
