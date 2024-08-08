@@ -3,44 +3,42 @@ const { ethers } = require("hardhat");
 
 describe("Cross Chain Name Service", function () {
   let simulator;
-  let routerAddress;
   let register;
   let receiver;
   let lookup;
+  let routerAddress;
+  let sourceChainSelector = 1; // Usa un valor más pequeño
 
   before(async () => {
-    const [deployer] = await ethers.getSigners();
+    const [deployer, alice] = await ethers.getSigners();
 
     // Deploy CCIPLocalSimulator
     const CCIPLocalSimulator = await ethers.getContractFactory("CCIPLocalSimulator");
     simulator = await CCIPLocalSimulator.deploy();
     await simulator.deployed();
 
-    // Get Router contract address
-    routerAddress = await simulator.configuration();
-
-    // Deploy CrossChainNameServiceRegister
-    const Register = await ethers.getContractFactory("CrossChainNameServiceRegister");
-    register = await Register.deploy(routerAddress);
-    await register.deployed();
-
-    // Deploy CrossChainNameServiceReceiver
-    const Receiver = await ethers.getContractFactory("CrossChainNameServiceReceiver");
-    receiver = await Receiver.deploy(routerAddress);
-    await receiver.deployed();
+    // Get Router contract address from configuration
+    const config = await simulator.configuration();
+    routerAddress = config[1]; // Asegúrate de que este sea el valor correcto
 
     // Deploy CrossChainNameServiceLookup
     const Lookup = await ethers.getContractFactory("CrossChainNameServiceLookup");
-    lookup = await Lookup.deploy(routerAddress);
+    lookup = await Lookup.deploy(); // Aquí, el constructor no necesita argumentos
     await lookup.deployed();
 
-    // Enable chains
-    await register.enableChain(1);
-    await receiver.enableChain(1);
+    // Deploy CrossChainNameServiceRegister with all required arguments
+    const Register = await ethers.getContractFactory("CrossChainNameServiceRegister");
+    register = await Register.deploy(routerAddress, lookup.address); // Pasar todos los argumentos necesarios
+    await register.deployed();
+
+    // Deploy CrossChainNameServiceReceiver with all required arguments
+    const Receiver = await ethers.getContractFactory("CrossChainNameServiceReceiver");
+    receiver = await Receiver.deploy(routerAddress, lookup.address, sourceChainSelector); // Pasar todos los argumentos necesarios
+    await receiver.deployed();
 
     // Set CrossChainNameService addresses
-    await lookup.setCrossChainNameServiceAddress(1, register.address);
-    await lookup.setCrossChainNameServiceAddress(2, receiver.address);
+    await lookup.setCrossChainNameServiceAddress(register.address);
+    await lookup.setCrossChainNameServiceAddress(receiver.address);
   });
 
   it("Should register and lookup cross-chain name service", async () => {
@@ -49,7 +47,7 @@ describe("Cross Chain Name Service", function () {
     const aliceAddress = alice.address;
 
     // Register name
-    await register.register(name, aliceAddress);
+    await register.register(name);
 
     // Lookup name
     const registeredAddress = await lookup.lookup(name);
